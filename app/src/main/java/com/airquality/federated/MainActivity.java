@@ -43,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
     Session sess;
     Graph graph;
     File file;
-ini    Tensor<String> checkpointPrefix;
+    Tensor<String> checkpointPrefix;
     String checkpointDir;
 
     static {
