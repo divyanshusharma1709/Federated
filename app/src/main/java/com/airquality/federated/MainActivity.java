@@ -6,13 +6,14 @@ Feb 17, 2017
 package com.airquality.federated;
 
 import android.os.Environment;
-import android.os.SystemClock;
 
 import androidx.appcompat.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.common.util.ArrayUtils;
@@ -56,50 +57,95 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         file = new File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "/Weights.bin");
         setContentView(R.layout.activity_main);
-        initializeGraph();
-        float[][][] features;
-        float[] labels;
-        int epochs = 1;
+        InputStream inputStream;
+        try {
+            inputStream = getAssets().open("graph.pb");
+            byte[] buffer = new byte[inputStream.available()];
+            int bytesRead;
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                output.write(buffer, 0, bytesRead);
+            }
+            graphDef = output.toByteArray();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        Graph graph = new Graph();
+        sess = new Session(graph);
+        graph.importGraphDef(graphDef);
+//        inferenceInterface = new TensorFlowInferenceInterface;
+//        inferenceInterface.initializeTensorFlow(getAssets(), MODEL_FILE);
+        sess.runner().addTarget("init").run();
+        Toast.makeText(getApplicationContext(), "Initialized" + sess.toString(), Toast.LENGTH_SHORT).show();
+        final TextView W = (TextView) findViewById(R.id.W);
+        final TextView B = (TextView) findViewById(R.id.B);
+        final Button button = (Button) findViewById(R.id.button);
+        final EditText epochs = (EditText) findViewById(R.id.epochs);
+        button.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                float n_epochs = Float.parseFloat(epochs.getText().toString());
+                float num1 = (float) Math.random();
+                try (org.tensorflow.Tensor input = Tensor.create(num1);
+                     Tensor target = Tensor.create(2*num1 + 3)) {
+                    for(int epoch = 0; epoch <= n_epochs; epoch++) {
+                        sess.runner().feed("input", input).feed("target", target).addTarget("train").run();
+                        ArrayList<Tensor<?>> values = (ArrayList<Tensor<?>>) sess.runner().fetch("W/read").fetch("b/read").run();
+                        W.setText((Float.toString(values.get(0).floatValue())));
+                        B.setText(Float.toString(values.get(1).floatValue()));
+                    }
+                }
+            }
+        });
+        Button upload = findViewById(R.id.uploadWeights);
+        upload.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                MyAsyncTask uploadWeights = new MyAsyncTask(MainActivity.this, file, "uploadWeights", new MyAsyncTask.AsyncResponse() {
+                    @Override
+                    public void processFinish(String result) {
+                        Log.i("Output: uploadWeights", result);
+                        Toast.makeText(MainActivity.this, "5 Weights Successfully Uploaded", Toast.LENGTH_SHORT).show();
 
-        //TODO: Create Feature Vector (3D) "float[batch_size][9][15]" or whatever
-        //TODO: Get CPCB label for Features "float[batch_size][1]
-        //TODO: Uncomment the train() call
-//        train(features, labels, epochs);
 
 
+                    }
+                });
+                uploadWeights.execute();
+
+                Toast.makeText(MainActivity.this, "5 Weights updated", Toast.LENGTH_SHORT).show();
+            }
+        });
+        Button getModel = findViewById(R.id.getModel);
+        getModel.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                MyAsyncTask isGlobalModelUpdated = new MyAsyncTask(MainActivity.this, file, "ismodelUpdated", new MyAsyncTask.AsyncResponse() {
+                    @Override
+                    public void processFinish(String result) {
+                        //If True, get Global Model
+                            MyAsyncTask getGlobalModel = new MyAsyncTask(MainActivity.this, file, "getModel", new MyAsyncTask.AsyncResponse() {
+                                @Override
+                                public void processFinish(String result) {
+                                    Log.i("Output: GetGlobalModel", result);
+                                }
+                            });
+                            getGlobalModel.execute();
+                            Toast.makeText(MainActivity.this, "Fetched Global Model Successfully", Toast.LENGTH_SHORT).show();
+                        Log.i("Output: isModelUpdated", "Done");
+
+                    }
+                });
+                isGlobalModelUpdated.execute();
+            }
+        });
         //Save Weights in Private Storage
-        finalSave();
+//        finalSave();
 
         //Upload Weights to Server
-        MyAsyncTask uploadWeights = new MyAsyncTask(MainActivity.this, file, "uploadWeights", new MyAsyncTask.AsyncResponse() {
-            @Override
-            public void processFinish(String result) {
-                Log.i("Output: uploadWeights", result);
 
-            }
-        });
-        uploadWeights.execute();
         //Check if new model is available
 
-        MyAsyncTask isGlobalModelUpdated = new MyAsyncTask(MainActivity.this, file, "ismodelUpdated", new MyAsyncTask.AsyncResponse() {
-            @Override
-            public void processFinish(String result) {
-                //If True, get Global Model
-                if(result.equals("True"))
-                {
-                    MyAsyncTask getGlobalModel = new MyAsyncTask(MainActivity.this, file, "getModel", new MyAsyncTask.AsyncResponse() {
-                        @Override
-                        public void processFinish(String result) {
-                            Log.i("Output: GetGlobalModel", result);
-                        }
-                    });
-                    getGlobalModel.execute();
-                }
-                Log.i("Output: isModelUpdated", result);
 
-            }
-        });
-        isGlobalModelUpdated.execute();
 
     }
 
